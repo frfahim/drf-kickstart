@@ -1,0 +1,74 @@
+volumes:
+  db_data: {}
+  db_data_backups: {}
+  redis_data: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./docker/local/django/Dockerfile
+    image: kickstart_django
+    container_name: kickstart_django
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - .:/project:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    ports:
+      - '8000:8000'
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./docker/production/postgres/Dockerfile
+    image: kickstart_postgres
+    container_name: kickstart_postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - db_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+
+  redis:
+    image: docker.io/redis:6
+    container_name: kickstart_redis
+
+    volumes:
+      - redis_data:/data
+
+  celeryworker:
+    <<: *django
+    image: kickstart_celery_worker
+    container_name: kickstart_celery_worker
+    depends_on:
+      - redis
+      - postgres
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: kickstart_celery_beat
+    container_name: kickstart_celery_beat
+    depends_on:
+      - redis
+      - postgres
+    ports: []
+    command: /start-celerybeat
+
+  # celeryflower:
+  #   <<: *django
+  #   image: kickstart_celery_flower
+  #   container_name: kickstart_celery_flower
+  #   ports:
+  #     - '5555:5555'
+  #   command: /start-flower
+
+networks:
+  backend_network:
+    driver: bridge

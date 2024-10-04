@@ -1,0 +1,79 @@
+volumes:
+  production_db: {}
+  production_db_backups: {}
+  production_traefik: {}
+  production_app_media: {}
+  production_redis_data: {}
+
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./docker/production/django/Dockerfile
+
+    image: django_app
+    volumes:
+      - production_app_media:/project/app/media
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./docker/production/postgres/Dockerfile
+    image: postgres
+    volumes:
+      - production_db:/var/lib/postgresql/data
+      - production_db_backups:/backups
+    env_file:
+      - ./.envs/.production/.postgres
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./docker/production/traefik/Dockerfile
+    image: traefik
+    depends_on:
+      - django
+    volumes:
+      - production_traefik:/etc/traefik/acme
+    ports:
+      - '0.0.0.0:80:80'
+      - '0.0.0.0:443:443'
+      - '0.0.0.0:5555:5555'
+
+  redis:
+    image: docker.io/redis:6
+    volumes:
+      - production_redis_data:/data
+
+  celeryworker:
+    <<: *django
+    image: celeryworker
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: celerybeat
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: flower
+    command: /start-flower
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./docker/production/nginx/Dockerfile
+    image: nginx
+    depends_on:
+      - django
+    volumes:
+      - production_app_media:/usr/share/nginx/media:ro
